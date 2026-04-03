@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ================================
+// ENUMS
+// ================================
+
+enum Role {
+  CUSTOMER
+  BAKER
+  ADMIN
+}
+
+enum SubscriptionTier {
+  TRIAL
+  GROWTH
+  PRO
+  YEARLY
+}
+
+enum ProductCategory {
+  CAKES
+  CUPCAKES
+  BREAD
+  PASTRIES
+  COOKIES
+  SAVOURY
+  CELEBRATION
+  SEASONAL
+  OTHER
+}
+
+enum SlotType {
+  COLLECTION
+  DELIVERY
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  DECLINED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum GroupOrderStatus {
+  OPEN
+  CLOSED
+  PLACED
+  COMPLETED
+}
+
+// ================================
+// MODELS
+// ================================
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  password      String?
+  role          Role          @default(CUSTOMER)
+  emailVerified Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  bakerProfile  BakerProfile?
+  orders        Order[]       @relation("CustomerOrders")
+  reviews       Review[]
+  notifications Notification[]
+}
+
+model BakerProfile {
+  id                   String           @id @default(cuid())
+  userId               String           @unique
+  user                 User             @relation(fields: [userId], references: [id])
+  businessName         String
+  tagline              String?
+  about                String?
+  profilePhoto         String?
+  coverPhoto           String?
+  neighbourhood        String
+  city                 String           @default("Liverpool")
+  postcode             String
+  specialityTags       String[]
+  dietaryTags          String[]
+  languagesSpoken      String[]
+  foodSafetyCert       String?
+  hygieneRating        Int?
+  councilRegNumber     String?
+  minimumOrderValue    Float            @default(0)
+  minimumLeadTimeHours Int              @default(24)
+  instagramUrl         String?
+  facebookUrl          String?
+  tiktokUrl            String?
+  stripeAccountId      String?
+  stripeOnboarded      Boolean          @default(false)
+  subscriptionTier     SubscriptionTier @default(TRIAL)
+  subscriptionId       String?
+  verified             Boolean          @default(false)
+  foundingBaker        Boolean          @default(false)
+  mentorBaker          Boolean          @default(false)
+  active               Boolean          @default(false)
+  approved             Boolean          @default(false)
+  growthScore          Int?
+  products             Product[]
+  slots                DeliverySlot[]
+  orders               Order[]          @relation("BakerOrders")
+  reviews              Review[]
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model Product {
+  id             String          @id @default(cuid())
+  bakerId        String
+  baker          BakerProfile    @relation(fields: [bakerId], references: [id])
+  name           String
+  description    String
+  price          Float
+  category       ProductCategory
+  photos         String[]
+  allergens      String[]
+  dietaryTags    String[]
+  variants       Json?
+  customOptions  Json?
+  minQuantity    Int             @default(1)
+  maxQuantity    Int?
+  minNoticeHours Int             @default(24)
+  available      Boolean         @default(true)
+  soldOut        Boolean         @default(false)
+  seasonal       Boolean         @default(false)
+  featured       Boolean         @default(false)
+  viewCount      Int             @default(0)
+  orderItems     OrderItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model DeliverySlot {
+  id         String       @id @default(cuid())
+  bakerId    String
+  baker      BakerProfile @relation(fields: [bakerId], references: [id])
+  date       DateTime
+  startTime  String
+  endTime    String
+  type       SlotType
+  capacity   Int
+  booked     Int          @default(0)
+  cutoffTime DateTime
+  orders     Order[]
+  createdAt  DateTime     @default(now())
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  customerId      String
+  customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
+  bakerId         String
+  baker           BakerProfile  @relation("BakerOrders", fields: [bakerId], references: [id])
+  slotId          String?
+  slot            DeliverySlot? @relation(fields: [slotId], references: [id])
+  status          OrderStatus   @default(PLACED)
+  deliveryType    SlotType
+  deliveryAddress Json?
+  deliveryFee     Float         @default(0)
+  subtotal        Float
+  discount        Float         @default(0)
+  total           Float
+  commission      Float
+  platformFee     Float
+  stripeFee       Float
+  notes           String?
+  items           OrderItem[]
+  payment         Payment?
+  review          Review?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model OrderItem {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id])
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Int
+  price         Float
+  variant       Json?
+  customisation String?
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  orderId               String        @unique
+  order                 Order         @relation(fields: [orderId], references: [id])
+  stripePaymentIntentId String        @unique
+  amount                Float
+  commission            Float
+  stripeFee             Float
+  status                PaymentStatus @default(PENDING)
+  refundAmount          Float?
+  refundReason          String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+model Subscription {
+  id                   String           @id @default(cuid())
+  bakerId              String           @unique
+  stripeSubscriptionId String           @unique
+  tier                 SubscriptionTier
+  status               String
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model Review {
+  id         String       @id @default(cuid())
+  orderId    String       @unique
+  order      Order        @relation(fields: [orderId], references: [id])
+  customerId String
+  customer   User         @relation(fields: [customerId], references: [id])
+  bakerId    String
+  baker      BakerProfile @relation(fields: [bakerId], references: [id])
+  rating     Int
+  comment    String?
+  photos     String[]
+  bakerReply String?
+  verified   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+}
+
+model DiscountCode {
+  id         String       @id @default(cuid())
+  bakerId    String
+  code       String       @unique
+  type       DiscountType
+  value      Float
+  usageLimit Int?
+  usageCount Int          @default(0)
+  expiresAt  DateTime?
+  active     Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+}
+
+model LoyaltyStamp {
+  id         String   @id @default(cuid())
+  customerId String
+  bakerId    String
+  stamps     Int      @default(0)
+  threshold  Int      @default(9)
+  rewardType String   @default("FREE_PRODUCT")
+  updatedAt  DateTime @updatedAt
+}
+
+model GroupOrder {
+  id           String           @id @default(cuid())
+  creatorId    String
+  bakerId      String
+  shareLink    String           @unique
+  deadline     DateTime
+  status       GroupOrderStatus @default(OPEN)
+  participants Json[]
+  createdAt    DateTime         @default(now())
+}
